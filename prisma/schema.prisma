@@ -4,13 +4,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model Friend {
   id               String        @id @default(cuid())
   name             String
   contact          String?
+  accountHint      String?       // e.g. "SBI ****1234" or "Zerodha UPI"
   defaultProfitPct Decimal       @db.Decimal(5, 4)
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
@@ -23,9 +23,11 @@ model Deal {
   id                 String             @id @default(cuid())
   ipoName            String
   applyDate          DateTime
+  allotmentDate      DateTime?
   listingDate        DateTime?
   friendId           String
   fundingType        FundingType
+  lots               Int?
   mayankContribution Decimal            @db.Decimal(14, 2)
   friendContribution Decimal            @db.Decimal(14, 2)
   status             DealStatus         @default(APPLIED)
@@ -33,6 +35,7 @@ model Deal {
   sharedProfitPct    Decimal?           @db.Decimal(5, 4)
   sharedProfitBasis  SharedProfitBasis?
   salePrice          Decimal?           @db.Decimal(14, 2)
+  carryForward       Boolean            @default(false)
   notes              String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

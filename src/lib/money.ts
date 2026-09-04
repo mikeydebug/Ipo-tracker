@@ -1,4 +1,4 @@
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "decimal.js";
 
 /**
  * Format a Decimal amount (stored in paise) as Indian Rupees string.
@@ -48,5 +48,4 @@ export function parseDecimal(value: unknown, fieldName: string): Decimal {
   }
 }
 
-/** Re-export Decimal so callers don't need to import from prisma runtime directly */
-export { Decimal };
+

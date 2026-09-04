@@ -7,7 +7,7 @@
  *   TOTAL_PROFIT → friend: 4200, mayank: 7800
  */
 
-import { Decimal } from "@prisma/client/runtime/library";
+import { Decimal } from "decimal.js";
 import {
   calcFullSettlement,
   calcSharedOwnShare,
