@@ -63,13 +63,18 @@ export default async function DealsPage() {
                   key={deal.id}
                   className="border-b border-[rgba(99,102,241,0.05)] table-row-hover"
                 >
-                  <td className="py-4 px-5 font-medium text-white">
+                  <td className="py-4 px-5">
                     <Link
                       href={`/deals/${deal.id}`}
-                      className="hover:text-indigo-300 transition-colors"
+                      className="font-medium text-white hover:text-indigo-300 transition-colors"
                     >
                       {deal.ipoName}
                     </Link>
+                    {deal.notes && (
+                      <div className="text-[11px] text-[#64748b] mt-1 line-clamp-1" title={deal.notes}>
+                        {deal.notes}
+                      </div>
+                    )}
                   </td>
                   <td className="py-4 px-5 text-[#94a3b8]">
                     {deal.friend.name}
