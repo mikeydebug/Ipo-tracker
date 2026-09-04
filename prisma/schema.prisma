@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Friend {
+  id               String        @id @default(cuid())
+  name             String
+  contact          String?
+  defaultProfitPct Decimal       @db.Decimal(5, 4)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  deals         Deal[]
+  ledgerEntries LedgerEntry[]
+}
+
+model Deal {
+  id                 String             @id @default(cuid())
+  ipoName            String
+  applyDate          DateTime
+  listingDate        DateTime?
+  friendId           String
+  fundingType        FundingType
+  mayankContribution Decimal            @db.Decimal(14, 2)
+  friendContribution Decimal            @db.Decimal(14, 2)
+  status             DealStatus         @default(APPLIED)
+  profitPct          Decimal?           @db.Decimal(5, 4)
+  sharedProfitPct    Decimal?           @db.Decimal(5, 4)
+  sharedProfitBasis  SharedProfitBasis?
+  salePrice          Decimal?           @db.Decimal(14, 2)
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  friend        Friend        @relation(fields: [friendId], references: [id])
+  ledgerEntries LedgerEntry[]
+}
+
+model LedgerEntry {
+  id        String          @id @default(cuid())
+  friendId  String
+  dealId    String
+  type      LedgerEntryType
+  amount    Decimal         @db.Decimal(14, 2)
+  direction Direction
+  timestamp DateTime        @default(now())
+  note      String?
+
+  friend Friend @relation(fields: [friendId], references: [id])
+  deal   Deal   @relation(fields: [dealId], references: [id])
+}
+
+enum FundingType {
+  FULL
+  SHARED
+}
+
+enum DealStatus {
+  APPLIED
+  NOT_ALLOTTED
+  ALLOTTED
+  SOLD
+  SETTLED
+}
+
+enum SharedProfitBasis {
+  OWN_SHARE
+  TOTAL_PROFIT
+}
+
+enum LedgerEntryType {
+  DISBURSEMENT
+  REFUND
+  SETTLEMENT
+}
+
+enum Direction {
+  TO_FRIEND
+  FROM_FRIEND
+}
