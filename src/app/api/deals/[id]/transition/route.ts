@@ -72,7 +72,7 @@ export async function POST(
     await prisma.$transaction(async (tx) => {
       await tx.deal.update({ where: { id }, data: { status: "NOT_ALLOTTED", carryForward: false } });
 
-      // Refund mayank's contribution
+      // Refund mayank's contribution back to Mayank
       await tx.ledgerEntry.create({
         data: {
           friendId: deal.friendId,
@@ -80,23 +80,9 @@ export async function POST(
           type: "REFUND",
           amount: deal.mayankContribution,
           direction: "FROM_FRIEND",
-          note: `Refund — ${deal.ipoName} not allotted`,
+          note: `Refund received — ${deal.ipoName} not allotted`,
         },
       });
-
-      // For SHARED, refund friend's contribution too
-      if (deal.fundingType === "SHARED" && deal.friendContribution.gt(0)) {
-        await tx.ledgerEntry.create({
-          data: {
-            friendId: deal.friendId,
-            dealId: id,
-            type: "REFUND",
-            amount: deal.friendContribution,
-            direction: "TO_FRIEND",
-            note: `Friend refund — ${deal.ipoName} not allotted`,
-          },
-        });
-      }
     });
 
     return NextResponse.json({ ok: true, status: "NOT_ALLOTTED", carryForward: false });
@@ -213,19 +199,7 @@ export async function POST(
         },
       });
 
-      // SETTLEMENT ledger entry: friend receives their payout FROM us → TO_FRIEND
-      await tx.ledgerEntry.create({
-        data: {
-          friendId: deal.friendId,
-          dealId: id,
-          type: "SETTLEMENT",
-          amount: settlement.friendPayout,
-          direction: "TO_FRIEND",
-          note: `Settlement payout — ${deal.ipoName} (friend share)`,
-        },
-      });
-
-      // Mayank's portion comes back FROM_FRIEND
+      // Mayank's payout (capital + profit) comes back FROM_FRIEND
       await tx.ledgerEntry.create({
         data: {
           friendId: deal.friendId,
@@ -233,7 +207,7 @@ export async function POST(
           type: "SETTLEMENT",
           amount: settlement.mayankPayout,
           direction: "FROM_FRIEND",
-          note: `Settlement return — ${deal.ipoName} (owner share)`,
+          note: `Settlement return — ${deal.ipoName} (payout to you)`,
         },
       });
     });

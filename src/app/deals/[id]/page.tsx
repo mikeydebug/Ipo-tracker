@@ -692,10 +692,14 @@ export default function DealDetailPage({
                     {e.type[0]}
                   </div>
                   <div>
-                    <div className="text-sm text-white capitalize">
-                      {e.type.toLowerCase()}{" "}
+                    <div className="text-sm text-white font-medium">
+                      {e.type === "DISBURSEMENT"
+                        ? "Capital Deployed"
+                        : e.type === "REFUND"
+                        ? "Refund Received"
+                        : "Settlement Return"}{" "}
                       <span className="text-[#64748b] text-xs">
-                        ({e.direction === "TO_FRIEND" ? "→ friend" : "← you"})
+                        ({e.direction === "TO_FRIEND" ? "outflow" : "inflow"})
                       </span>
                     </div>
                     {e.note && (
@@ -707,8 +711,8 @@ export default function DealDetailPage({
                   <div
                     className={`font-semibold text-sm ${
                       e.direction === "TO_FRIEND"
-                        ? "negative-amount"
-                        : "positive-amount"
+                        ? "text-rose-400"
+                        : "text-emerald-400"
                     }`}
                   >
                     {e.direction === "TO_FRIEND" ? "−" : "+"}

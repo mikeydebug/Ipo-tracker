@@ -133,20 +133,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // For SHARED deals, friend's contribution comes FROM_FRIEND (they co-invest)
-    if (data.fundingType === "SHARED" && friendAmt.gt(0)) {
-      await tx.ledgerEntry.create({
-        data: {
-          friendId: data.friendId,
-          dealId: newDeal.id,
-          type: "DISBURSEMENT",
-          amount: friendAmt,
-          direction: "FROM_FRIEND",
-          note: `Friend co-investment for ${data.ipoName} IPO application`,
-        },
-      });
-    }
-
     return newDeal;
   });
 

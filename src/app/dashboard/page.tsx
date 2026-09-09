@@ -5,21 +5,36 @@ import { Decimal } from "decimal.js";
 import Link from "next/link";
 import { DealStatusBadge } from "@/components/DealStatusBadge";
 import { DealStatus } from "@prisma/client";
+import { calcSettlement } from "@/lib/settlement";
 
 async function getDashboardData() {
-  const [allDeals, allFriends, allLedgerEntries, pendingDeals, recentEntries] =
+  const [settledDeals, allFriends, activeDeals, pendingDeals, recentEntries] =
     await Promise.all([
-      prisma.deal.findMany({ where: { status: "SETTLED" } }),
+      prisma.deal.findMany({
+        where: { status: "SETTLED" },
+        select: {
+          fundingType: true,
+          mayankContribution: true,
+          friendContribution: true,
+          salePrice: true,
+          profitPct: true,
+          sharedProfitPct: true,
+          sharedProfitBasis: true,
+        },
+      }),
       prisma.friend.findMany({
         include: {
           ledgerEntries: { select: { amount: true, direction: true } },
           deals: {
-            where: { status: { in: ["APPLIED", "ALLOTTED"] } },
+            where: { status: { in: ["APPLIED", "ALLOTTED", "SOLD"] } },
             select: { id: true },
           },
         },
       }),
-      prisma.ledgerEntry.findMany(),
+      prisma.deal.findMany({
+        where: { status: { in: ["APPLIED", "ALLOTTED", "SOLD"] } },
+        select: { id: true, mayankContribution: true, lots: true },
+      }),
       prisma.deal.findMany({
         where: { status: { in: ["APPLIED", "ALLOTTED", "SOLD"] } },
         orderBy: { applyDate: "desc" },
@@ -28,7 +43,7 @@ async function getDashboardData() {
       }),
       prisma.ledgerEntry.findMany({
         orderBy: { timestamp: "desc" },
-        take: 10,
+        take: 15,
         include: {
           friend: { select: { name: true } },
           deal: { select: { ipoName: true } },
@@ -36,7 +51,16 @@ async function getDashboardData() {
       }),
     ]);
 
-  // Total pool = sum of all positive friend balances (money sitting in their accounts)
+  // Net capital actively deployed in open IPOs (Mayank's actual capital locked right now)
+  const deployedCapital = activeDeals.reduce(
+    (acc, d) => acc.add(new Decimal(d.mayankContribution.toString())),
+    new Decimal(0)
+  );
+
+  // Total lots applied in active IPOs
+  const totalLots = activeDeals.reduce((sum, d) => sum + (d.lots ?? 0), 0);
+
+  // Friend balances: net money sitting with each friend
   const friendBalances = allFriends.map((f) => {
     const bal = f.ledgerEntries.reduce((acc, e) => {
       const amt = new Decimal(e.amount.toString());
@@ -46,48 +70,52 @@ async function getDashboardData() {
     return { friend: f, balance: bal, hasActiveDeal };
   });
 
-  const totalPoolBalance = friendBalances.reduce(
-    (acc, { balance }) => (balance.gt(0) ? acc.add(balance) : acc),
-    new Decimal(0)
-  );
-
   // Idle friends = positive balance but NO active deal = carry-forward capital
   const idleFriends = friendBalances.filter(
     ({ balance, hasActiveDeal }) => balance.gt(0) && !hasActiveDeal
   );
 
-  // Total lots applied across all deals
-  const allDealsWithLots = await prisma.deal.findMany({ select: { lots: true } });
-  const totalLots = allDealsWithLots.reduce((sum, d) => sum + (d.lots ?? 0), 0);
+  const idleCapital = idleFriends.reduce(
+    (acc, { balance }) => acc.add(balance),
+    new Decimal(0)
+  );
 
-  // Total capital deployed = sum of TO_FRIEND DISBURSEMENT across open/allotted deals
-  const openDealIds = new Set(pendingDeals.map((d) => d.id));
-  const deployedCapital = allLedgerEntries
-    .filter(
-      (e) =>
-        e.type === "DISBURSEMENT" &&
-        e.direction === "TO_FRIEND" &&
-        openDealIds.has(e.dealId)
-    )
-    .reduce((acc, e) => acc.add(new Decimal(e.amount.toString())), new Decimal(0));
+  // Total pool balance = capital in active IPOs + idle capital sitting with friends
+  const totalPoolBalance = deployedCapital.add(idleCapital);
 
-  // Total profit earned from SETTLEMENT entries (FROM_FRIEND = mayank gets back)
-  const totalProfitEarned = allLedgerEntries
-    .filter((e) => e.type === "SETTLEMENT" && e.direction === "FROM_FRIEND")
-    .reduce((acc, e) => acc.add(new Decimal(e.amount.toString())), new Decimal(0));
-
-  const pendingFriendPayouts = deployedCapital;
+  // Real profit earned by Mayank from settled deals (payout minus invested capital)
+  let totalProfitEarned = new Decimal(0);
+  for (const deal of settledDeals) {
+    if (deal.salePrice) {
+      try {
+        const res = calcSettlement({
+          fundingType: deal.fundingType,
+          mayankContribution: deal.mayankContribution,
+          friendContribution: deal.friendContribution,
+          salePrice: deal.salePrice,
+          profitPct: deal.profitPct,
+          sharedProfitPct: deal.sharedProfitPct,
+          sharedProfitBasis: deal.sharedProfitBasis,
+        });
+        const mayankProfit = res.mayankPayout.sub(deal.mayankContribution);
+        totalProfitEarned = totalProfitEarned.add(mayankProfit);
+      } catch {
+        // Skip any misconfigured deals
+      }
+    }
+  }
 
   return {
     deployedCapital,
-    totalProfitEarned,
-    pendingFriendPayouts,
+    idleCapital,
     totalPoolBalance,
+    totalProfitEarned,
     idleFriends,
     totalLots,
     pendingDeals,
+    activeDealsCount: activeDeals.length,
     recentEntries,
-    settledCount: allDeals.length,
+    settledCount: settledDeals.length,
   };
 }
 
@@ -115,7 +143,11 @@ export default async function DashboardPage() {
         <KpiCard
           title="Total Pool Balance"
           value={formatINR(data.totalPoolBalance)}
-          subtitle="All accounts combined"
+          subtitle={
+            data.idleCapital.gt(0)
+              ? `Deployed: ${formatINR(data.deployedCapital)} · Idle: ${formatINR(data.idleCapital)}`
+              : `Across ${data.activeDealsCount} active account${data.activeDealsCount !== 1 ? "s" : ""}`
+          }
           accent="indigo"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -137,9 +169,9 @@ export default async function DashboardPage() {
           }
         />
         <KpiCard
-          title="Pending Deals"
+          title="Active IPO Deals"
           value={String(data.pendingDeals.length)}
-          subtitle="Need your attention"
+          subtitle="Applied & awaiting result"
           accent="amber"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -152,7 +184,7 @@ export default async function DashboardPage() {
         <KpiCard
           title="Total Lots Applied"
           value={data.totalLots > 0 ? String(data.totalLots) : "—"}
-          subtitle="Across all IPOs"
+          subtitle="Across active deals"
           accent="indigo"
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -237,53 +269,70 @@ export default async function DashboardPage() {
 
       {/* Recent Activity */}
       <div className="glass-card p-6">
-        <h2 className="text-base font-semibold text-white mb-4">
-          Recent Activity
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-white">
+            Recent Activity
+          </h2>
+          <span className="text-xs text-[#64748b]">
+            Money Outflow (−) & Return (+)
+          </span>
+        </div>
         {data.recentEntries.length === 0 ? (
           <p className="text-[#64748b] text-sm text-center py-6">
             No transactions yet. Create your first deal to get started.
           </p>
         ) : (
           <div className="space-y-1">
-            {data.recentEntries.map((entry) => (
-              <div
-                key={entry.id}
-                className="flex items-center justify-between py-3 border-b border-[rgba(99,102,241,0.06)] last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                      entry.type === "DISBURSEMENT"
-                        ? "bg-indigo-500/10 text-indigo-400"
-                        : entry.type === "REFUND"
-                        ? "bg-amber-500/10 text-amber-400"
-                        : "bg-emerald-500/10 text-emerald-400"
-                    }`}
-                  >
-                    {entry.type[0]}
-                  </div>
-                  <div>
-                    <div className="text-sm text-white">
-                      {entry.deal.ipoName}
-                    </div>
-                    <div className="text-xs text-[#64748b]">
-                      {entry.friend.name} · {entry.type.toLowerCase()}
-                    </div>
-                  </div>
-                </div>
+            {data.recentEntries.map((entry) => {
+              const isOutflow = entry.direction === "TO_FRIEND";
+              return (
                 <div
-                  className={
-                    entry.direction === "TO_FRIEND"
-                      ? "negative-amount text-sm"
-                      : "positive-amount text-sm"
-                  }
+                  key={entry.id}
+                  className="flex items-center justify-between py-3 border-b border-[rgba(99,102,241,0.06)] last:border-0 hover:bg-[rgba(99,102,241,0.03)] px-2 rounded-lg transition-colors"
                 >
-                  {entry.direction === "TO_FRIEND" ? "−" : "+"}
-                  {formatINR(entry.amount)}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
+                        isOutflow
+                          ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      }`}
+                    >
+                      {isOutflow ? "↓" : "↑"}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-white">
+                        {entry.deal.ipoName}
+                      </div>
+                      <div className="text-xs text-[#64748b]">
+                        {entry.friend.name} ·{" "}
+                        {entry.type === "DISBURSEMENT"
+                          ? "Capital Deployed"
+                          : entry.type === "REFUND"
+                          ? "Refund Received"
+                          : "Settlement Return"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div
+                      className={`text-sm font-semibold ${
+                        isOutflow ? "text-rose-400" : "text-emerald-400"
+                      }`}
+                    >
+                      {isOutflow ? "−" : "+"}
+                      {formatINR(entry.amount)}
+                    </div>
+                    <div className="text-[10px] text-[#64748b]">
+                      {new Date(entry.timestamp).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
