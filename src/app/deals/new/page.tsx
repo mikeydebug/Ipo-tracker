@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 interface Friend {
@@ -22,8 +22,9 @@ interface FriendRow {
   sharedProfitPct: string;
 }
 
-export default function NewDealPage() {
+function NewDealForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [friends, setFriends] = useState<Friend[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -31,12 +32,12 @@ export default function NewDealPage() {
 
   // IPO-level fields (entered once)
   const [ipo, setIpo] = useState({
-    ipoName: "",
-    applyDate: new Date().toISOString().slice(0, 10),
-    allotmentDate: "",
-    listingDate: "",
-    fundingType: "FULL" as "FULL" | "SHARED",
-    lots: "",
+    ipoName: searchParams.get("ipoName") || "",
+    applyDate: searchParams.get("applyDate") || new Date().toISOString().slice(0, 10),
+    allotmentDate: searchParams.get("allotmentDate") || "",
+    listingDate: searchParams.get("listingDate") || "",
+    fundingType: (searchParams.get("fundingType") as "FULL" | "SHARED") || "FULL",
+    lots: searchParams.get("lots") || "",
     notes: "",
   });
 
@@ -472,5 +473,13 @@ export default function NewDealPage() {
         </div>
       </form>
     </div>
+  );
+}
+
+export default function NewDealPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center p-12 text-[#64748b]">Loading form...</div>}>
+      <NewDealForm />
+    </Suspense>
   );
 }

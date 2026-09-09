@@ -69,3 +69,25 @@ export async function PATCH(
     salePrice: deal.salePrice?.toString() ?? null,
   });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  // Run in a transaction to safely delete ledger entries and the deal itself
+  await prisma.$transaction(async (tx) => {
+    // 1. Delete associated ledger entries to reverse capital balances
+    await tx.ledgerEntry.deleteMany({
+      where: { dealId: id },
+    });
+
+    // 2. Delete the deal
+    await tx.deal.delete({
+      where: { id },
+    });
+  });
+
+  return NextResponse.json({ success: true });
+}

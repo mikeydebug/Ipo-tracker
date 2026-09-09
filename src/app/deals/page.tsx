@@ -42,8 +42,9 @@ export default async function DealsPage() {
         </div>
       ) : (
         <div className="glass-card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[800px]">
+              <thead>
               <tr className="border-b border-[rgba(99,102,241,0.1)]">
                 {["IPO", "Friend", "Type", "Lots", "Applied", "Contribution", "Status"].map(
                   (h) => (
@@ -114,6 +115,7 @@ export default async function DealsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
