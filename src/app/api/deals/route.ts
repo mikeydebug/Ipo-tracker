@@ -17,6 +17,7 @@ const CreateDealSchema = z.object({
   profitPct: z.string().regex(/^\d+(\.\d+)?$/).optional().nullable(),
   sharedProfitPct: z.string().regex(/^\d+(\.\d+)?$/).optional().nullable(),
   sharedProfitBasis: z.enum(["OWN_SHARE", "TOTAL_PROFIT"]).optional().nullable(),
+  useIdleCapital: z.boolean().optional(),
   notes: z.string().max(1000).optional().nullable(),
 });
 
@@ -121,17 +122,19 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create disbursement ledger entry for mayank's contribution going to friend
-    await tx.ledgerEntry.create({
-      data: {
-        friendId: data.friendId,
-        dealId: newDeal.id,
-        type: "DISBURSEMENT",
-        amount: mayankAmt,
-        direction: "TO_FRIEND",
-        note: `Capital disbursed for ${data.ipoName} IPO application`,
-      },
-    });
+    if (!data.useIdleCapital) {
+      // Create disbursement ledger entry for mayank's contribution going to friend
+      await tx.ledgerEntry.create({
+        data: {
+          friendId: data.friendId,
+          dealId: newDeal.id,
+          type: "DISBURSEMENT",
+          amount: mayankAmt,
+          direction: "TO_FRIEND",
+          note: `Capital disbursed for ${data.ipoName} IPO application`,
+        },
+      });
+    }
 
     return newDeal;
   });

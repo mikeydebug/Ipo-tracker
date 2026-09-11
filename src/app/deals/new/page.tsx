@@ -20,6 +20,7 @@ interface FriendRow {
   friendContribution: string;
   profitPct: string;
   sharedProfitPct: string;
+  useIdleCapital: boolean;
 }
 
 function NewDealForm() {
@@ -57,6 +58,7 @@ function NewDealForm() {
             friendContribution: "",
             profitPct: (parseFloat(f.defaultProfitPct) * 100).toFixed(0),
             sharedProfitPct: (parseFloat(f.defaultProfitPct) * 100).toFixed(0),
+            useIdleCapital: false,
           }))
         );
       });
@@ -111,6 +113,7 @@ function NewDealForm() {
           ipo.fundingType === "SHARED" && row.sharedProfitPct
             ? String(parseFloat(row.sharedProfitPct) / 100)
             : null,
+        useIdleCapital: row.useIdleCapital,
         notes: ipo.notes || null,
       };
 
@@ -186,7 +189,7 @@ function NewDealForm() {
           </div>
 
           {/* Dates row */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="form-group">
               <label className="label" htmlFor="applyDate">Apply Date *</label>
               <input
@@ -224,7 +227,7 @@ function NewDealForm() {
           </div>
 
           {/* Funding Type + Lots */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="form-group">
               <label className="label">Funding Type *</label>
               <div className="flex gap-2">
@@ -347,8 +350,9 @@ function NewDealForm() {
 
                     {/* Per-friend amount fields (only when enabled) */}
                     {row.enabled && (
-                      <div className="grid grid-cols-2 gap-3 mt-2 pl-8">
-                        <div>
+                      <div className="mt-4 pl-0 sm:pl-8 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
                           <label className="label text-[11px]">Your Contribution (₹) *</label>
                           <input
                             type="number"
@@ -420,6 +424,21 @@ function NewDealForm() {
                             </div>
                           </>
                         )}
+                        </div>
+
+                        {/* Use Idle Capital Option */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            id={`useIdle_${friend.id}`}
+                            checked={row.useIdleCapital}
+                            onChange={(e) => updateRow(friend.id, { useIdleCapital: e.target.checked })}
+                            className="w-4 h-4 rounded border-[rgba(99,102,241,0.3)] bg-[rgba(15,15,26,0.5)] text-indigo-500 focus:ring-indigo-500 focus:ring-offset-0"
+                          />
+                          <label htmlFor={`useIdle_${friend.id}`} className="text-xs text-[#64748b] cursor-pointer">
+                            Use existing account balance (no bank transfer entry)
+                          </label>
+                        </div>
                       </div>
                     )}
                   </div>

@@ -7,6 +7,8 @@ import { DealStatusBadge } from "@/components/DealStatusBadge";
 import { DealStatus } from "@prisma/client";
 import { calcSettlement } from "@/lib/settlement";
 
+export const dynamic = "force-dynamic";
+
 async function getDashboardData() {
   const [settledDeals, allFriends, activeDeals, pendingDeals, recentEntries] =
     await Promise.all([
@@ -27,7 +29,7 @@ async function getDashboardData() {
           ledgerEntries: { select: { amount: true, direction: true } },
           deals: {
             where: { status: { in: ["APPLIED", "ALLOTTED", "SOLD"] } },
-            select: { id: true },
+            select: { id: true, mayankContribution: true },
           },
         },
       }),
@@ -60,23 +62,38 @@ async function getDashboardData() {
   // Total lots applied in active IPOs
   const totalLots = activeDeals.reduce((sum, d) => sum + (d.lots ?? 0), 0);
 
-  // Friend balances: net money sitting with each friend
+  // Friend balances: net money sitting with each friend (Total Ledger Balance)
   const friendBalances = allFriends.map((f) => {
     const bal = f.ledgerEntries.reduce((acc, e) => {
       const amt = new Decimal(e.amount.toString());
       return e.direction === "TO_FRIEND" ? acc.add(amt) : acc.sub(amt);
     }, new Decimal(0));
-    const hasActiveDeal = f.deals.length > 0;
-    return { friend: f, balance: bal, hasActiveDeal };
+    
+    // Calculate deployed capital for this specific friend
+    const friendDeployed = f.deals.reduce(
+      (acc, d) => acc.add(new Decimal(d.mayankContribution.toString())),
+      new Decimal(0)
+    );
+    
+    // Idle capital = Total Balance - Deployed Capital
+    // If balance is less than deployed (shouldn't happen unless data is incomplete), cap at 0
+    const idleAmount = bal.sub(friendDeployed);
+    const actualIdle = idleAmount.gt(0) ? idleAmount : new Decimal(0);
+
+    return { 
+      friend: f, 
+      ledgerBalance: bal, 
+      friendDeployed,
+      idleAmount: actualIdle,
+      hasActiveDeal: f.deals.length > 0 
+    };
   });
 
-  // Idle friends = positive balance but NO active deal = carry-forward capital
-  const idleFriends = friendBalances.filter(
-    ({ balance, hasActiveDeal }) => balance.gt(0) && !hasActiveDeal
-  );
+  // Idle friends = those who have actual idle capital > 0
+  const idleFriends = friendBalances.filter(({ idleAmount }) => idleAmount.gt(0));
 
   const idleCapital = idleFriends.reduce(
-    (acc, { balance }) => acc.add(balance),
+    (acc, { idleAmount }) => acc.add(idleAmount),
     new Decimal(0)
   );
 
@@ -138,8 +155,8 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* KPI Cards — 2×2 grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPI Cards — responsive grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Total Pool Balance"
           value={formatINR(data.totalPoolBalance)}
@@ -241,7 +258,7 @@ export default async function DashboardPage() {
             Yeh friends ke accounts mein paisa hai — koi active deal nahi. Next IPO apply karte time no bank transfer needed.
           </p>
           <div className="space-y-2">
-            {data.idleFriends.map(({ friend, balance }) => (
+            {data.idleFriends.map(({ friend, idleAmount }) => (
               <Link
                 key={friend.id}
                 href={`/friends/${friend.id}`}
@@ -257,7 +274,7 @@ export default async function DashboardPage() {
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-bold text-amber-400">
-                    {formatINR(balance)}
+                    {formatINR(idleAmount)}
                   </div>
                   <div className="text-[10px] text-[#64748b]">idle in account</div>
                 </div>

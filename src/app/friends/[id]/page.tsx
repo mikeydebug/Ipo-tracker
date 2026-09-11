@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { prisma } from "@/lib/prisma";
 import { formatINR } from "@/lib/money";
 import { Decimal } from "decimal.js";
